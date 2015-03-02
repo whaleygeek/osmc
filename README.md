@@ -33,5 +33,28 @@ collect some blocks, to solve some puzzle, or to find a way to exit the room in 
 Watch this space!
 (or sign up for github and "watch" this repo to get updates as they happen!
 
+TEASERS
+=======
+
+* The portacabin, a hollow shell (Adventures in Minecraft ch3, house building)
+* lighting the portacabin or rooms ("The Turner Prize Room" script I wrote)
+* geofencing room entry and exit (Adventures in Minecraft ch2, the rent game)
+* room save and load format (Adventures in Minecraft ch6, Duplicator room, 
+  with added field for extraData)
+* Building something much taller than the Minecraft world (Adventures in Minecraft ch8,
+  Alien Invasion including teleporter)
+* Building a structure with sloping edges (Adventures in Minecraft ch7, pyramids)
+* sandboxing scripts (something new!)
+* The lift (Adventures in Minecraft ch10, without hardware, but with walls and sliding doors
+  using minecraftstuff Shape object to move doors)
+* floorplan building (Adventures in Minecraft ch6, tipchat, a list of room names and program names)
+* Starting and stopping scripts (something new!)
+* Which type of building? Look all through Adventures in Minecraft for some secret hints
+  planted in a number of the chapters!
+* controlling the lift (Tkinter user interface panel)
+
+That's enough teasers for now! Keep watching!
+
+
 David Whale
 @whaleygeek
