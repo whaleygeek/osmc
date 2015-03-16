@@ -41,50 +41,46 @@ def define(x1, y1, z1, w, h, d):
     width  = w
     height = h
     depth  = d
-    
-
-def build():
-    """Build a room with a door"""
-    
-    # build walls
-    mc.setBlocks(x, y, z,
-                 x+width, y+height, z+depth,
-                 block.WOOD_PLANKS.id)
-
-    # carve out the inside
-    mc.setBlocks(x+1, y, z+1,
-                 x+width-2, y+height-1, z+depth-2,
-                 block.AIR.id)
-
-    # carve out a door in middle of front face
-    mc.setBlocks(x+(width/2)-2, y, z,
-                 x+(width/2)+2, y+4, z,
-                 block.AIR.id)
 
 
-def destroy():
-    """Remove all traces of the room"""
-    # build room out of air
-    mc.setBlocks(x, y, z,
-                 x+width, y+height, z+depth,
-                 block.AIR.id)
+def highlight(visible):
+    """Highlight the corners of the geofenced region"""
+    if visible:
+        b = block.STONE.id
+    else:
+        b = block.AIR.id
+
+    mc.setBlock(x,       y,        z, b)
+    mc.setBlock(x+width, y,        z, b)
+    mc.setBlock(x,       y+height, z, b)
+    mc.setBlock(x+width, y+height, z, b)
+
+    mc.setBlock(x,       y,        z+depth, b)
+    mc.setBlock(x+width, y,        z+depth, b)
+    mc.setBlock(x,       y+height, z+depth, b)
+    mc.setBlock(x+width, y+height, z+depth, b)
 
 
 def playerInside():
     """Geo fence the room, returns True if inside the room"""
     pos = mc.player.getTilePos()
-    if  pos.x >= x and pos.x <= x + width \
-    and pos.y >= y and pos.y <= y + height \
-    and pos.z >= z and pos.z <= z + depth:
-        return True # in room
-    return False # not in room
+    return inside(pos.x, pos.y, pos.z)
+
+
+def inside(px, py, pz):
+    if  px >= x and px <= x + width \
+    and py >= y and py <= y + height \
+    and pz >= z and pz <= z + depth:
+        return True # inside geofenced region
+    return False # not inside geofenced region
 
 
 def action():
     """only called when the player is in the room"""
-    mc.postToChat("Player is in the room")
+    mc.postToChat("Player is inside geofenced region")
 
-    
+
+
 # TEST HARNESS
 
 def test():
@@ -93,18 +89,17 @@ def test():
     pos  = mc.player.getTilePos()
     SIZE = 20
 
+    define(pos.x+4, pos.y, pos.z, SIZE, SIZE, SIZE)
+    highlight(True)
+    
     try:
-        define(pos.x+4, pos.y, pos.z, SIZE, SIZE, SIZE)
-        build()
-        
         while True:
             time.sleep(1)
             if playerInside():
                 action()
-        
     finally:
-        destroy()
-
+        highlight(False)
+        
 
 # Only run the test code if this file is the main program
 
