@@ -9,7 +9,8 @@
 import mcpi.minecraft as minecraft
 import mcpi.block as block
 import time
-import geofence as room
+import geofence
+import room
 
 FLASH_TIME = 1.0
 SIZE       = 10
@@ -18,6 +19,7 @@ mc  = minecraft.Minecraft.create()
 pos = mc.player.getTilePos()
 
 room.define(pos.x+2, pos.y, pos.z, SIZE, SIZE, SIZE)
+geofence.define(pos.x+2, pos.y, pos.z, SIZE, SIZE, SIZE)
 
 
 def placeTorches():
@@ -82,12 +84,12 @@ def manageRoom():
     """Monitor and manage the room"""
     global inRoom, nexttime, torchesOn
     
-    if not inRoom and room.playerInside():
+    if not inRoom and geofence.playerInside():
         setTorches(True)
         inRoom = True
         nexttime = time.time() + FLASH_TIME
         
-    elif inRoom and not room.playerInside():
+    elif inRoom and not geofence.playerInside():
         setTorches(False)
         inRoom = False
 

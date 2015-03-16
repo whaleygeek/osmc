@@ -46,21 +46,24 @@ def build():
                  x+(width/2)+2, y+4, z,
                  block.AIR.id)
 
-    # add a light so you can see inside
+
+def torch(visible):
+    """ add a torch so you can see inside"""
+    if visible:
+        b = block.TORCH.id
+    else:
+        b = block.AIR.id
+        
     mc.setBlock(x+(width/2), y+height-4, z+1,
-                block.TORCH.id)
+                b)
 
-
+    
 def clear():
     """remove all blocks inside the room"""
     # build room contents out of air
     mc.setBlocks(x+1,         y,            z+1,
                  x+(width-1), y+(height-1), z+(depth-1),
                  block.AIR.id)
-    
-    # put back the light
-    mc.setBlock(x+(width/2), y+height-4, z+1,
-                block.TORCH.id)
 
     
 def destroy():
@@ -83,6 +86,7 @@ def test():
     mc.postToChat("Building the room")
     time.sleep(3)
     build()
+    torch(True)
 
     # Build something in there
     mc.setBlocks(x+(width*1/4), y,              z+(depth*1/4),
@@ -95,11 +99,13 @@ def test():
     mc.postToChat("Room about to be cleared")
     time.sleep(3)
     clear()
+    torch(True)
     mc.postToChat("Room cleared")
 
     time.sleep(10)
     mc.postToChat("About to demolish room in 3 seconds")
     time.sleep(3)
+    torch(False)
     destroy()
     mc.postToChat("The room has gone")
     
