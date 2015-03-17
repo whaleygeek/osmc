@@ -12,92 +12,114 @@ mc = minecraft.Minecraft.create()
 
 
 def listing():
-        """List all files that could be loaded"""
-        files = glob.glob(FILE_EXTN)
+    """List all files that could be loaded"""
+    files = glob.glob(FILE_EXTN)
 
-	for filename in files:
-		print(filename)
+    for filename in files:
+        print(filename)
 
-	print("\n")    
+    print("\n")
 
-      
-def save(x, y, z, width, height, depth, filename):
-        """Save a cuboid region to a file"""
-	f = open(filename, "w")
 
-        # metadata header
-	f.write(str(SIZEX) + "," + str(SIZEY) + "," + str(SIZEZ) + "\n")
+def save(sx, sy, sz, width, height, depth, filename):
+    """Save a cuboid region to a file"""
+    f = open(filename, "w")
+    print("whd=" + str(width) + " " + str(height) + " " + str(depth))
 
-	for y in range(SIZEY):
-		# Write a blank line at the start of each layer of data    
-		f.write("\n")
+    # metadata header
+    f.write(str(width) + "," + str(height) + "," + str(depth) + "\n")
 
-		for x in range(SIZEX):
-			line = ""
+    for y in range(height):
+        print("save:" + str(y) + "/" + str(height))
+        # Write a blank line at the start of each layer of data
+        f.write("\n")
 
-			for z in range(SIZEZ):
-				blockid = mc.getBlock(originx+x, originy+y, originz+z)
-				if line != "":
-					line = line + ","
-				line = line + str(blockid)
-			f.write(line + "\n")
-	f.close()
-  
+        for x in range(width):
+            line = ""
+            print("..save:" + str(x) + "/" + str(width))
+            for z in range(depth):
+                blockid = mc.getBlock(sx+x, sy+y, sz+z)
+                if line != "":
+                    line = line + ","
+                line = line + str(blockid)
+            f.write(line + "\n")
+    f.close()
+
+
+def getsize(filename):
+    """Get size information from a file"""
+    f = open(filename, "r")
+
+    line = f.readline()
+
+    # The first line in the file is the metadata, it holds the 3 sizes
+    coords = line.split(",")
+    width  = int(coords[0])
+    height = int(coords[1])
+    depth  = int(coords[2])
+    f.close()
+    return width, height, depth
+
     
-def load(filename, x, y, z):
-        """load from a file to a cuboid region"""
-	f = open(filename, "r")
- 
-	lines = f.readlines()
+def load(sx, sy, sz, filename):
+    """load from a file to a cuboid region"""
+    f = open(filename, "r")
 
-	# The first line in the file is the metadata, it holds the 3 sizes
-	coords = lines[0].split(",")
-	sizex = int(coords[0])
-	sizey = int(coords[1])
-	sizez = int(coords[2])
+    lines = f.readlines()
 
-        # each following line contains a full raster of blockId's
-	lineidx = 1
+    # The first line in the file is the metadata, it holds the 3 sizes
+    coords = lines[0].split(",")
+    width = int(coords[0])
+    height = int(coords[1])
+    depth = int(coords[2])
 
-	for y in range(sizey):
-		lineidx = lineidx + 1
-		for x in range(sizex):
-			line = lines[lineidx]
-			# skip expected space between layers
-			lineidx = lineidx + 1
-			data = line.split(",")
-			for z in range(sizez):
-				blockid = int(data[z])
-				mc.setBlock(originx+x, originy+y, originz+z, blockid)
-	f.close()
+    # each following line contains a full raster of blockId's
+    lineidx = 1
+
+    for y in range(height):
+        print("load:" + str(y) + "/" + str(height))
+        lineidx = lineidx + 1
+        for x in range(width):
+            line = lines[lineidx]
+            # skip expected space between layers
+            lineidx = lineidx + 1
+            data = line.split(",")
+            for z in range(depth):
+                blockid = int(data[z])
+                mc.setBlock(sx+x, sy+y, sz+z, blockid)
+    f.close()
 
 
 # TEST HARNESS
 
 def testLoad():
-        """Test the load feature"""
-        listing()
-        name = raw_input("filename? ")
-        pos = mc.player.getTilePos()
-        load(pos.x+5, pos.y, pos.z, filename)
+    """Test the load feature"""
+    listing()
+    filename = raw_input("filename? ")
+    pos = mc.player.getTilePos()
+    width, height, depth = getsize(filename)
+    # Put the player at the centre of the construction
+    width = width / 2
+    depth = depth / 2
+    load(pos.x-width, pos.y, pos.z-depth, filename)
 
 
 def testSave():
-        """Test the save feature"""
-        listing()
-        name = raw_input("filename to save to? ")
-        size = int(raw_input("size of area? "))
-        size = size/2
-        pos = mc.player.getTilePos()
-        save(pos.x-size, pos.y,         pos.z-size,
-             pos.x+size, pos.y+(size*2) pos.z,
-             filename)
+    """Test the save feature"""
+    listing()
+    filename = raw_input("filename to save to? ")
+    size = int(raw_input("size of area? "))
+    pos = mc.player.getTilePos()
+    half = size/2
+    save(pos.x-half, pos.y, pos.z-half,
+         size, size, size,
+         filename)
 
 
 # MAIN PROGRAM (only if this script is run)
 
 if __name__ == "__main__":
-        testSave()
-        testLoad()
-        
+    testSave()
+    testLoad()
+
 # END
