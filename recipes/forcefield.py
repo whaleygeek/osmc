@@ -34,26 +34,53 @@ y2 = None
 z2 = None
 
 # Is the player kept inside/outside of the region
+#TODO FieldType.DISABLED, FieldType.KEEPIN, FieldType.KEEPOUT, FieldType.BOTHWAYS
 keep_inside = True
 
 # The forcefield can be enabled/disabled
 enabled = False
+
+# Proximity types
+class Proximity:
+    UNKNOWN            = 0
+    INSIDE             = 1
+    TOUCHING_INSIDE    = 2
+    OUTSIDE            = 3
+    TOUCHING_OUTSIDE   = 4
+    IN_FIELD           = 5
+    IN_DOORWAY         = 6
+    OUTSIDE_AT_DOORWAY = 7
+    INSIDE_AT_DOORWAY  = 8
+
+# Face types
+class Face:
+    NONE    = 0
+    NORTH   = 1
+    SOUTH   = 2
+    EAST    = 3
+    WEST    = 4
+    FLOOR   = 5
+    CEILING = 6
 
 # The last known good position either inside/outside of the field
 lastgood_x = None
 lastgood_y = None
 lastgood_z = None
 
+# The last known proximity value
+# Useful for helping to detect which direction walking through doorway
+lastprox   = Proximity.UNKNOWN
+
 # The coordinates of a rectangular doorway that can be enabled/disabled
-door_x1 = None
-door_y1 = None
-door_z1 = None
-door_x2 = None
-door_y2 = None
-door_z2 = None
+doorway_x1 = None
+doorway_y1 = None
+doorway_z1 = None
+doorway_x2 = None
+doorway_y2 = None
+doorway_z2 = None
 
 # Is the door open or closed?
-door_closed = True
+doorway_closed = True
 
 
 def define(field_x1, field_y1, field_z1, field_x2, field_y2, field_z2, keepin=True):
@@ -69,145 +96,156 @@ def define(field_x1, field_y1, field_z1, field_x2, field_y2, field_z2, keepin=Tr
     keep_inside = keepin
 
 
-def defineDoor(x1, y1, z1, x2, y2, z2):
-    global door_x1, door_y1, door_z1, door_x2, door_y2, door_z2
-    door_closed = True
-    door_x1 = x1
-    door_y1 = y1
-    door_z1 = z1
-    door_x2 = x2
-    door_y2 = y2
-    door_z2 = z2
+def defineDoorway(x1, y1, z1, x2, y2, z2):
+    global doorway_x1, doorway_y, doorway_z1, doorway_x2, doorway_y2, doorway_z2
+    global doorway_closed
+    
+    doorway_closed = True
+    doorway_x1 = x1
+    doorway_y1 = y1
+    doorway_z1 = z1
+    doorway_x2 = x2
+    doorway_y2 = y2
+    doorway_z2 = z2
 
 
+#TODO setFieldDirection
 def keepin(in=True):
     """Keep player inside(True) or outside(False)"""
     global keep_inside
     keep_inside = in
 
 
+#TODO setFieldDirection
 def keepout(out=True)
     """Keep player outside(True) or ionside(False)"""
     global keep_inside
     keep_inside = not out
 
 
+#TODO setFieldDirection
 def enable(enable=True):
     """Enable or disable the force field"""
     global enabled
     enabled = enable
 
 
+#TODO setFieldDirection
 def disable(disable=True):
     """Enable or disable the force field"""
     global enabled
     enabled = not disable
 
-    
-def openDoor(open=True):
+
+#TODO set swing directions of doorway?    
+def openDoorway(open=True):
     """Open the door(if True)"""
-    global door_closed
-    door_closed = not open
+    global doorway_closed
+    doorway_closed = not open
+
         
-    
-def closeDoor(close=True):
+#TODO set swing directions of doorway?    
+def closeDoorway(close=True):
     """Close the door(if True)"""
-    global door_closed
-    door_closed = close
+    global doorway_closed
+    door_closedway = close
 
-# Sense proximity to the field as follows:
-#   inside:   contained by field, at least 1 block away from it
-#   touching: next to field or on the field, in any dimension
-#   outside:  not contained by the field, at least 1 block away from it
-
-# TODO touching-inside and touching-outside???
-# TODO better to say checkField() and get two constants back?
-#   OUTSIDE, INSIDE, TOUCHING-OUTSIDE, TOUCHING-INSIDE, ON
-#   NORTH, EAST, SOUTH, WEST, ROOF, CEILING
-# could then build these other functions from a single assessment if required
-# Do we want DOOR_OUTSIDE, DOOR_INSIDE, DOOR_ON also (only if enabled??)
-# or both if disabled and enabled, if you know you are at the door you could
-# pop up a message even though it is closed.
 
 def getProximity(px, py, pz):
     """Work out what type of proximity to the field we have"""
-    pass
-    # proximity type
-    #   OUTSIDE
-    #   INSIDE
-    #   TOUCHING_OUTSIDE
-    #   TOUCHING_INSIDE
-    #   AT
-    #   DOOR_OUTSIDE
-    #   DOOR_INSIDE
-    #   DOOR_AT
 
-    # face type
-    #   NORTH
-    #   EAST
-    #   SOUTH
-    #   WEST
-    #   FLOOR
-    #   CEILING
-    #   DOOR??? (multiple doors might be interesting later e.g. invisible mazes
-    #   with multiple doors), although we could just return DOOR and return
-    #   some extra data which is a door index number.
-    
+    #Proximity
+    #   Proximity.UNKNOWN            
+    #   Proximity.INSIDE             
+    #   Proximity.TOUCHING_INSIDE    
+    #   Proximity.OUTSIDE            
+    #   Proximity.TOUCHING_OUTSIDE   
+    #   Proximity.IN_FIELD           
+    #   Proximity.IN_DOORWAY         
+    #   Proximity.OUTSIDE_AT_DOORWAY 
+    #   Proximity.INSIDE_AT_DOORWAY
+
+    #Face
+    #   Face.NONE
+    #   Face.NORTH
+    #   Face.EAST
+    #   Face.SOUTH
+    #   Face.WEST
+    #   Face.FLOOR
+    #   Face.CEILING
+
+    return Proximity.UNKNOWN, Face.NONE #TODO
 
 
-#TODO: see notes on getProximity()
 def isInside(px, py, pz):
     """Is the player safely inside the force field?"""
-    if  px > x1 and px < x2 \
-    and py > y1 and py < y2 \
-    and pz > z1 and pz < z2:
-        return True # inside
-    return False # not inside (outside or touching-field)
+    global lastprox
+    
+    ptype, pface = getProximity(px, py, pz)
+    if ptype == Proximity.INSIDE \
+    or ptype == Proximity.INSIDE_AT_DOORWAY \
+    or ptype == Proximity.TOUCHING_INSIDE:
+        return True # INSIDE
+    
+    # IN_FIELD and IN_DOORWAY create a result that depends on lastprox
+    if ptype == Proximity.IN_FIELD:
+        if lastprox == Proximity.INSIDE or lastprox == Proximity.TOUCHING_INSIDE:
+            return True # INSIDE
+        
+        if lastprox == Proximity.OUTSIDE or lastprox == Proximity.TOUCHING_OUTSIDE:
+            return False # NOT INSIDE
+
+        #TODO sideways movements from doorway to field?
+        #TODO where is lastprox updated?
+        return False # NOT INSIDE
+
+    if ptype == Proximity.IN_DOORWAY:
+        if lastprox == Proximity.INSIDE or lastprox == Proximity.INSIDE_AT_DOORWAY:
+            return True # NOT INSIDE
+        
+        if lastprox == Proximity.OUTSIDE or lastprox == Proximity.OUTSIDE_AT_DOORWAY:
+            return False # NOT INSIDE
+
+        #TODO sideways movements from field to doorway?
+        #TODO where is lastprox updated?
+        return False # NOT INSIDE
 
 
-#TODO: see notes on getProximity()
 def isOutside(px, py, pz):
     """Is the player safely outside the force field?"""
-    if px < x1 or px > x2 \
-    or py < y1 or py > y2 \
-    or pz < z1 or pz > z2:
-        return True # outside
-    return False # not outside (inside or touching-field)
+    ptype, pface = getProximity(px, py, pz)
+    #TODO: see notes on getProximity()
+    #OUTSIDE, OUTSIDE_AT_DOORWAY, TOUCHING_OUTSIDE
+    #IN and DOORWAY create a result that depends on previous state
+    # Similar logic to isInside
+    pass # TODO
 
 
-#TODO: see notes on getProximity()
 def isTouchingField(px, py, pz):
     """Is the player touching the force field?"""
-    # Note, on the field, touching field outside, touching field inside?
-    # might want to give a warning if touching, but buzz if on field
-    
-    # inside touching - check if any coordinates overlap with 6 walls
-    # defined at the inner edge of the enclosure
-
-    # outside touching - check if any coordinates overlap with 6 walls
-    # defined at the outer edge of the enclosure
-    pass # TODO
+    ptype, pface = getProximity(px, py, pz)
+    if ptype == Proximity.TOUCHING_INSIDE or ptype == PROXIMITY_TOUCHING_OUTSIDE \
+    or ptype == Proximity.IN_FIELD:
+        return True
+    return False
 
 
-#TODO: see notes on getProximity()
-def isOnField(px, py, pz):
+def isInField(px, py, pz):
     """Is the player touching the force field?"""
-    # Note, on the field, touching field outside, touching field inside?
-    # might want to give a warning if touching, but buzz if on field
-    # check if any coordinates overlap with the 6 virtual walls of the
-    # enclosure (remember the force field might be invisible and might be
-    # overlayed on a real structure to save space)
-    pass # TODO
+    ptype, pface = getProximity(px, py, pz)
+    if ptype == Proximity.IN_FIELD:
+        return True
+    return False
     
 
-#TODO: see notes on getProximity()
-def isAtDoor(px, py, pz):
+def isAtDoorway(px, py, pz):
     """Work out if player is at the door region"""
-    #If the door is open this will be useful to allow walking through door"""
-    #at outside door face
-    #at inside door face
-    #at door threshold
-    pass # TODO
+    ptype, pface = getProximity(px, py, pz)
+    if ptype == Proximity.OUTSIDE_AT_DOORWAY \
+    or ptype == Proximity.INSIDE_AT_DOORWAY \
+    or ptype == Proximity.IN_DOORWAY:
+        return True
+    return False
 
 
 def loop():
@@ -218,33 +256,35 @@ def loop():
     # to be the other side. But in a way that the forcefield is still
     # active in all the other regions.
     # i.e. really the forcefield should always work in both directions?
+    # or perhaps we have to configure which directions the forcefield
+    # is enabled (disabled, keepin, keepout, bothways)
+
+    #TODO do we have to update lastprox here?
     
     pos = mc.player.getTilePos()
 
-    #TODO: see notes on getProximity()
-    if not door_closed and isAtDoor(pos.x, pos.y, pos.z):
+    #TODO directions on doorway?
+    if not door_closed and isAtDoorway(pos.x, pos.y, pos.z):
         return # Don't buzz if walking through door
-    
-    #TODO: see notes on getProximity()
+
+    #TODO direction enforcements on field?
     if keep_inside and not isInside(pos.x, pos.y, pos.z) and not:
         buzz()
-        
-    #TODO: see notes on getProximity()
+
+    #TODO direction enforcements on field?
     elif not keep_inside and isInside(pos.x, pos.y, pos.z):
         buzz()
         
-    #TODO: see notes on getProximity()
-    elif isOnField(x, y, z):
+    elif isInField(pos.x, pos.y, pos.z):
         buzz()
         
-    #TODO: see notes on getProximity()
-    elif isTouchingField(x, y, z):
+    elif isTouchingField(pos.x, pos.y, pos.z):
         warning()
         
     else: # must be ok, nothing specific to report
-        lastgood_x = x
-        lastgood_y = y
-        lastgood_z = z
+        lastgood_x = pos.x
+        lastgood_y = pos.y
+        lastgood_z = pos.z
 
         
 def warning():
@@ -300,7 +340,7 @@ def build(visible=True, hollow=False):
         wrapper(x1, y1, z1, x2, y1, z2, b)        
 
 
-def showDoor(visible=True):
+def showDoorway(visible=True):
     """Show or hide the door"""
     if visible:
         b = block.AIR.id
@@ -314,11 +354,12 @@ def showDoor(visible=True):
 def testin():
     """Test that the "keep in" forcefield works"""
     define(10,-1,10,30,30,30)
-    defineDoor(15,0,15,20,0,20)
+    defineDoorway(15,0,15,20,0,20)
     build()
-    showDoor()
     keepin()
     enable()
+    showDoorway()
+    openDoorway()
     
     mc.player.setTilePos(15, 0, 15) # inside
     mc.postToChat("Try to escape the jail")
@@ -340,11 +381,12 @@ def testin():
 def testout():
     """Test that the "keep out" forcefield works"""
     define(10,-1,10,30,30,30)
-    defineDoor(15,0,15,20,0,20)
+    defineDoorway(15,0,15,20,0,20)
     build()
-    showDoor()
     keepout()
     enable()
+    showDoorway()
+    openDoorway()
     
     mc.player.setTilePos(0, 0, 0) # outside
     mc.postToChat("Try to get into the locked room")
