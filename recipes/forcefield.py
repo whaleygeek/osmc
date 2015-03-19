@@ -1,9 +1,12 @@
 ﻿# forcefield.py  18/03/2015  D.J.Whale
 #
 # NOTE: Still a work in progress
-# NOTE: Not yet tested
+# NOTE: Still getting the internal modelling correct for this module
+# NOTE: Not yet tested (at all!)
 #
-# Shows how to prevent the player from escaping from a region.
+# Shows how to prevent the player from escaping from a force-field protected
+# region within minecraft.
+#
 # It builds a forcefield around a region, teleporting the player back
 # to the "last known good" location if they escape the forcefield
 # via any means.
@@ -17,28 +20,141 @@
 #
 # Eventually we want to be able to have multiple rooms, and rooms to have
 # multiple doors. But that is not easy to code until we change this to an
-# object oriented implemntation - we will do that a little later. First it is
+# object oriented implementation - we will do that a little later. First it is
 # important to get the logic working correctly.
+#
+# TODO: A lot of this code will simplify if we build a surface abstraction
+# and a point abstraction (sx1, sy1, sz1, sx2, sy2, sz2) and (px, py, pz)
+# as classes that group the coordinates together. We can then perform
+# coordinate math on those objects, rather than passing all the coordinates
+# around to functions. But classes/objects will be a next generation of this
+# module once the algorithms have been designed and tested (i.e. object
+# orientation done by refactoring, adding in classes/objects to solve the
+# problems of multiplicity, such as needing multiple doors in a forcefield,
+# or needing to handle multiple forcefields simultaneously).
+
+# NOTE: Could we reduce the scale of the problem by reducing actual coordinates
+# to small signs and unity deltas, and then just do a brute force compare?
+# The compare could be a table-driven compare even.
+# This might be an optimisation, it makes sense to leave a logical development
+# path in the github history, so people can see how a more advanced and
+# optimised solution was created from an initial dumb solution. Only optimise
+# once we have figures on performance, so that the right thing is optimised.
+#
+# Note, most of the maths in this module is independent of minecraft. It could
+# be applied to any 3D coordinate space. This might mean that we put all
+# the maths in a separate coordinateMaths package, and then write a simple
+# minecraft specific implementation around the outside. That might be a
+# refactoring step.
 
 import mcpi.minecraft as minecraft
 import mcpi.block as block
 
-mc  = minecraft.Minecraft.create()
 
-# The coordinates of the forcefield
-x1 = None
-y1 = None
-z1 = None
-x2 = None
-y2 = None
-z2 = None
+# SURFACE UTILITIES ------------------------------------------------------------
+# Utilities that help with coordinate maths associated with surfaces.
+# This is not minecraft specific, and will eventually be refactored into a
+# separate utility module. It will also be written with a set of objects
+# in a future release, so that we don't have to pass loads of coordinate
+# parameters around all the time.
 
-# Is the player kept inside/outside of the region
-#TODO FieldType.DISABLED, FieldType.KEEPIN, FieldType.KEEPOUT, FieldType.BOTHWAYS
-keep_inside = True
+# We would normally assume that a cube is defined from the smallest
+# coordinates to the biggest coordinates. But there is nothing that
+# requires that to be the case in the Minecraft API (you can draw a cube
+# from any two opposite corners). So all of these functions have to assume
+# that any scheme could be used, and we normalise coordinates before
+# calculation takes place to the smallest first, the biggest second.
+# This then simplifies the maths that follows.
 
-# The forcefield can be enabled/disabled
-enabled = False
+
+def getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2):
+    return min(sx1, sy1), min(sy1, sy2), min(sz1, sz2)
+
+
+def getLargestCoords(sx1, sy1, sz1, sx2, sy2, sz2):
+    return max(sx1, sy1), max(sy1, sy2), max(sz1, sz2)
+
+
+def isPointOnSurface(px, py, pz, sx1, sy1, sz1, sx2, sy2, sz2):
+    """Work out if a point is on a given 3D surface"""
+    # Usually we will use this with a 2D surface,
+    # but it is easier to model it as a 3D surface,
+    # it means one function can handle a surface in any dimension.
+
+    minx, miny, minz = getSmallestCoords()
+    maxx, mayz, maxy = getLargsetCoords()
+    
+    if  px >= minx and px <= maxx \
+    and py >= miny and py <= maxy \
+    and pz >= minz and pz <= maxz:
+        return True # IS on surface
+    return False # NOT on surface
+
+
+def getNorthSurface(sx1, sy1, sz1, sx2, sy2, sz2):
+    """Get a surface that represents just the north face of a 3D cube"""
+    # +z is south, -z is north (i.e. want the smallest z surface)
+    # Note that s?1 does not have to be smaller than s?2
+    minx, miny, minz = getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2)
+    maxx, maxy, maxz = getLargestCoords( sx1, sy1, sz1, sx2, sy2, sz2)
+    return minx, miny, minz, maxx, maxy, minz
+
+
+def getEastSurface(sx1, sy1, sz1, sx2, sy2, sz2):
+    """Get a surface that represents just the east face of a 3D cube"""
+    # +x is east, -x is west
+    minx, miny, minz = getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2)
+    maxx, maxy, maxz = getLargestCoords( sx1, sy1, sz1, sx2, sy2, sz2)
+    return maxx, miny, minz, maxx, maxy, maxz
+
+
+def getSouthSurface(sx1, sy1, sz1, sx2, sy2, sz2):
+    """Get a surface that represents just the south face of a 3D cube"""
+    # +z is south, -z is north
+    minx, miny, minz = getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2)
+    maxx, maxy, maxz = getLargestCoords( sx1, sy1, sz1, sx2, sy2, sz2)
+    return minx, miny, maxz, maxx, maxy, maxz
+
+
+def getWestSurface(sx1, sy1, sz1, sx2, sy2, sz2):
+    """Get a surface that represents just the west face of a 3D cube"""
+    # +x is east, -x is west
+    minx, miny, minz = getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2)
+    maxx, maxy, maxz = getLargestCoords( sx1, sy1, sz1, sx2, sy2, sz2)
+    return minx, miny, minz, minx, maxy, maxz
+
+
+def getFloorSurface(sx1, sy1, sz1, sx2, sy2, sz2):
+    """Get a surface that represents just the floor face of a 3D cube"""
+    # -y is down, +y is up
+    minx, miny, minz = getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2)
+    maxx, maxy, maxz = getLargestCoords( sx1, sy1, sz1, sx2, sy2, sz2)
+    return minx, miny, minz, maxx, miny, maxz
+
+
+def getCeilingSurface(sx1, sy1, sz1, sx2, sy2, sz2):
+    """Get a surface that represents just the ceiling face of a 3D cube"""
+    # -y is down, +y is up
+    minx, miny, minz = getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2)
+    maxx, maxy, maxz = getLargestCoords( sx1, sy1, sz1, sx2, sy2, sz2)
+    return minx, maxy, minz, maxx, maxy, maxz
+
+# Might need these in order to assess TOUCHING_INSIDE and TOUCHING_OUTSIDE??
+# moveSurfaceNorth
+# moveSurfaceEast
+# moveSurfaceWest
+# moveSurfaceSouth
+# moveSurfaceUp
+# moveSurfaceDown
+
+# or might not - once we factor out the doorway logic into a separate proximity
+# checker, the maths might be much simpler and be done with simple cuboid
+# expansions or contractions (or two overlapping cuboid checks), rather
+# than doing all the 6-face checking logic.
+
+
+# PROXIMITY TO A REGION --------------------------------------------------------
+# This maths is independent of minecraft, its all to do with coordinates.
 
 # Proximity types
 class Proximity:
@@ -62,117 +178,81 @@ class Face:
     FLOOR   = 5
     CEILING = 6
 
-# The last known good position either inside/outside of the field
-lastgood_x = None
-lastgood_y = None
-lastgood_z = None
-
-# The last known proximity value
-# Useful for helping to detect which direction walking through doorway
-lastprox   = Proximity.UNKNOWN
-
-# The coordinates of a rectangular doorway that can be enabled/disabled
-doorway_x1 = None
-doorway_y1 = None
-doorway_z1 = None
-doorway_x2 = None
-doorway_y2 = None
-doorway_z2 = None
-
-# Is the door open or closed?
-doorway_closed = True
-
-
-def define(field_x1, field_y1, field_z1, field_x2, field_y2, field_z2, keepin=True):
-    """Remember the bounding box of the forcefield"""
-    global x1, y1, z1, x2, y2, z2, keep_inside
-    
-    x1          = field_x1
-    y1          = field_y1
-    z1          = field_Y1
-    x2          = field_x2
-    y2          = field_y2
-    z2          = field_z2
-    keep_inside = keepin
-
-
-def defineDoorway(x1, y1, z1, x2, y2, z2):
-    global doorway_x1, doorway_y, doorway_z1, doorway_x2, doorway_y2, doorway_z2
-    global doorway_closed
-    
-    doorway_closed = True
-    doorway_x1 = x1
-    doorway_y1 = y1
-    doorway_z1 = z1
-    doorway_x2 = x2
-    doorway_y2 = y2
-    doorway_z2 = z2
-
-
-#TODO setFieldDirection
-def keepin(in=True):
-    """Keep player inside(True) or outside(False)"""
-    global keep_inside
-    keep_inside = in
-
-
-#TODO setFieldDirection
-def keepout(out=True)
-    """Keep player outside(True) or ionside(False)"""
-    global keep_inside
-    keep_inside = not out
-
-
-#TODO setFieldDirection
-def enable(enable=True):
-    """Enable or disable the force field"""
-    global enabled
-    enabled = enable
-
-
-#TODO setFieldDirection
-def disable(disable=True):
-    """Enable or disable the force field"""
-    global enabled
-    enabled = not disable
-
-
-#TODO set swing directions of doorway?    
-def openDoorway(open=True):
-    """Open the door(if True)"""
-    global doorway_closed
-    doorway_closed = not open
-
-        
-#TODO set swing directions of doorway?    
-def closeDoorway(close=True):
-    """Close the door(if True)"""
-    global doorway_closed
-    door_closedway = close
-
-
 def getProximity(px, py, pz):
     """Work out what type of proximity to the field we have"""
-
-    #Proximity
-    #   Proximity.UNKNOWN            
-    #   Proximity.INSIDE             
-    #   Proximity.TOUCHING_INSIDE    
-    #   Proximity.OUTSIDE            
-    #   Proximity.TOUCHING_OUTSIDE   
-    #   Proximity.IN_FIELD           
-    #   Proximity.IN_DOORWAY         
-    #   Proximity.OUTSIDE_AT_DOORWAY 
-    #   Proximity.INSIDE_AT_DOORWAY
-
-    #Face
-    #   Face.NONE
+    
+    #Face INITIAL DESIGN
+    # Note, this should really be a disambiguator for the other methods.
+    # e.g. if you are IN_FIELD, which face are you in?
+    # e.g. if you are TOUCHING_OUTSIDE, which face are you touching?
+    # if you are TOUCHING_INSIDE, which face are you touching?
+    # To calculate the face depends on which surface you are doing pointOnSurface
+    # on, which may depend on how far through the proximity assessment tree you are
     #   Face.NORTH
     #   Face.EAST
     #   Face.SOUTH
     #   Face.WEST
     #   Face.FLOOR
     #   Face.CEILING
+    #   Face.NONE
+
+
+    # NOTE: It looks like we might have to separate door proximity
+    # from general field proximity, otherwise AT_DOORWAY and INSIDE/OUTSIDE
+    # cannot be represented by a single return value.
+    
+    #Proximity INITIAL DESIGN
+    # (regardless of if doorway is open or not)
+    #   Proximity.IN_DOORWAY
+    #     pointOnSurface(doorway)
+    
+    #   Proximity.INSIDE_AT_DOORWAY
+    #     need to know doorway surface direction
+    #     create a surface that is just inside doorway
+    #     pointOnSurface(doorwayInside)
+    
+    #   Proximity.OUTSIDE_AT_DOORWAY
+    #     need to know doorway surface direction
+    #     create a surface that is just outside doorway
+    #     pointOnSurface(doorwayOutside)
+    
+    #   Proximity.IN_FIELD
+    #     need to blot out an open doorway from calculations
+    #     if doorway closed, then ignore doorway calcs
+    #     could check pointOnSurface() of all 6 faces
+    #     if we always calculate what face we are on this might be fine
+    #     if we only want to know if in field, quicker way is cube-inner
+    
+    #   Proximity.TOUCHING_INSIDE
+    #     if doorway closed, ignore doorway in calcs
+    #     if doorway open, exclude doorway from calcs
+    #     could get 6 inner surfaces and check pointOnSurface
+    #     or could define inner cube and check if on outer surface of that cube
+    #     with -1/+1 on coordinates
+    
+    #   Proximity.TOUCHING_OUTSIDE
+    #     if doorway closed, ingnore doorway in calcs
+    #     if doorway open, exclude doorway from calcs
+    #     could get 6 outer surfaces and check pointOnSurface
+    #     or could define outer cube and check if on outside
+    #     with -1/+1 on coordinates
+    
+    #   Proximity.INSIDE
+    #     how does doorway affect this?
+    #     if doorway closed, no effect?
+    #     but would be nice to know you are standing at the doorway
+    #     but then you might not be seen as being inside?
+    #     NOTE:### can we handle doorway with this proximity
+    #     or does it need to be an independent check after "general proximity"
+    #
+    #   Proximity.OUTSIDE
+    #     same issues as for INSIDE regarding doorway
+    #
+    #   Proximity.UNKNOWN
+    #     would it ever return this? Might be useful for a "prevprox"
+    #     but presumably a sample of all the coordinates would always give
+    #     us one of the other values?
+
 
     return Proximity.UNKNOWN, Face.NONE #TODO
 
@@ -246,6 +326,119 @@ def isAtDoorway(px, py, pz):
     or ptype == Proximity.IN_DOORWAY:
         return True
     return False
+
+
+# FORCEFIELD -------------------------------------------------------------------
+# This implements the forcefield logic.
+# It builds on top of the surface and proximity utilities.
+
+mc  = minecraft.Minecraft.create()
+
+# The coordinates of the forcefield
+x1 = None
+y1 = None
+z1 = None
+x2 = None
+y2 = None
+z2 = None
+
+# Is the player kept inside/outside of the region
+#see notes about two independent field directions
+#TODO FieldType.DISABLED, FieldType.KEEPIN, FieldType.KEEPOUT, FieldType.BOTHWAYS
+keep_inside = True
+
+# The forcefield can be enabled/disabled
+enabled = False
+
+
+# The last known good position either inside/outside of the field
+lastgood_x = None
+lastgood_y = None
+lastgood_z = None
+
+# The last known proximity value
+# Useful for helping to detect which direction walking through doorway
+lastprox   = Proximity.UNKNOWN
+
+# The coordinates of a rectangular doorway that can be enabled/disabled
+doorway_x1 = None
+doorway_y1 = None
+doorway_z1 = None
+doorway_x2 = None
+doorway_y2 = None
+doorway_z2 = None
+
+# Is the door open or closed?
+#TODO see notes about door swing direction
+doorway_closed = True
+
+
+def define(field_x1, field_y1, field_z1, field_x2, field_y2, field_z2, keepin=True):
+    """Remember the bounding box of the forcefield"""
+    global x1, y1, z1, x2, y2, z2, keep_inside
+    
+    x1          = field_x1
+    y1          = field_y1
+    z1          = field_Y1
+    x2          = field_x2
+    y2          = field_y2
+    z2          = field_z2
+    keep_inside = keepin
+
+
+def defineDoorway(x1, y1, z1, x2, y2, z2):
+    global doorway_x1, doorway_y, doorway_z1, doorway_x2, doorway_y2, doorway_z2
+    global doorway_closed
+    
+    doorway_closed = True
+    doorway_x1 = x1
+    doorway_y1 = y1
+    doorway_z1 = z1
+    doorway_x2 = x2
+    doorway_y2 = y2
+    doorway_z2 = z2
+
+
+#TODO setFieldDirection (keepin keepout should be independently settable)
+def keepin(in=True):
+    """Keep player inside(True) or outside(False)"""
+    global keep_inside
+    keep_inside = in
+
+
+#TODO setFieldDirection (keepin keepout should be independently settable)
+def keepout(out=True)
+    """Keep player outside(True) or ionside(False)"""
+    global keep_inside
+    keep_inside = not out
+
+
+#TODO setFieldDirection (should be a global enable for the field)
+def enable(enable=True):
+    """Enable or disable the force field"""
+    global enabled
+    enabled = enable
+
+
+#TODO setFieldDirection (should be a global disable for the field)
+def disable(disable=True):
+    """Enable or disable the force field"""
+    global enabled
+    enabled = not disable
+
+
+#TODO set swing directions of doorway? (independent allowin/allowout)   
+def openDoorway(open=True):
+    """Open the door(if True)"""
+    global doorway_closed
+    doorway_closed = not open
+
+        
+#TODO set swing directions of doorway? (independent allowin/allowout)
+def closeDoorway(close=True):
+    """Close the door(if True)"""
+    global doorway_closed
+    door_closedway = close
 
 
 def loop():
