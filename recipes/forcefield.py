@@ -1,4 +1,4 @@
-﻿# forcefield.py  18/03/2015  D.J.Whale
+﻿# forcefield.py  18/03/2015  (c) 2015 D.J.Whale
 #
 # NOTE: Still a work in progress
 # NOTE: Still getting the internal modelling correct for this module
@@ -66,6 +66,19 @@ import mcpi.block as block
 # calculation takes place to the smallest first, the biggest second.
 # This then simplifies the maths that follows.
 
+# TODO, we are trying to avoid use of Classes in this first version
+# so we can mostly use techniques known by children (from AdventuresInMinecraft)
+
+# however, passing 6 coordinates around all the time is really cumbersome.
+# readers know about lists, so we could define any surface as a list of
+# 6 coordinate values. This would make it easier to pass around a single
+# surface, and do comparisons and transformations.
+# strictly speaking it should be a tuple (immutable), we might just
+# get away with using that if we explain it.
+# It's not critical that all techniques in this module are understandable
+# by the readership, but it would be nice if we could show a path of thinking
+# from something they understand, to something that is optimised, via a
+# trail of refactoring.
 
 def getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2):
     return min(sx1, sy1), min(sy1, sy2), min(sz1, sz2)
@@ -157,17 +170,20 @@ def getCeilingSurface(sx1, sy1, sz1, sx2, sy2, sz2):
 # This maths is independent of minecraft, its all to do with coordinates.
 
 # Proximity types
-class Proximity:
+class FieldProximity:
     UNKNOWN            = 0
     INSIDE             = 1
     TOUCHING_INSIDE    = 2
     OUTSIDE            = 3
     TOUCHING_OUTSIDE   = 4
     IN_FIELD           = 5
-    IN_DOORWAY         = 6
-    OUTSIDE_AT_DOORWAY = 7
-    INSIDE_AT_DOORWAY  = 8
 
+class DoorwayProximity:
+    NONE               = 0
+    ON_THRESHOLD       = 1
+    AT_OUTSIDE         = 2
+    AT_INSIDE          = 3
+ 
 # Face types
 class Face:
     NONE    = 0
@@ -177,127 +193,143 @@ class Face:
     WEST    = 4
     FLOOR   = 5
     CEILING = 6
+    # face priorities at corner points?
 
-def getProximity(px, py, pz):
+
+#NOTE this method looks like it could be computationally expensive to run
+#that might be bad if we regularly move the force field, for example
+#we are looking at alternative implementations first before coding it.
+
+def getFieldProximity(px, py, pz):
     """Work out what type of proximity to the field we have"""
     
-    #Face INITIAL DESIGN
-    # Note, this should really be a disambiguator for the other methods.
-    # e.g. if you are IN_FIELD, which face are you in?
-    # e.g. if you are TOUCHING_OUTSIDE, which face are you touching?
-    # if you are TOUCHING_INSIDE, which face are you touching?
-    # To calculate the face depends on which surface you are doing pointOnSurface
-    # on, which may depend on how far through the proximity assessment tree you are
-    #   Face.NORTH
-    #   Face.EAST
-    #   Face.SOUTH
-    #   Face.WEST
-    #   Face.FLOOR
-    #   Face.CEILING
-    #   Face.NONE
+    # is the point ON the force field?
+    # FieldProximity.ON_FIELD
+    
+    # SCHEME A:
+    # pre compute 6 surfaces
+    # This probably does 6 comparisons per call,
+    # max of 6 calls to work out if on field.
+    # i.e. 36 integer comparisons.
+    if onSurface(northOnSurface, px, py, pz):
+        return FieldProximity.ON_FIELD, Face.NORTH
+    if onSurface(eastOnSurface, px, py, pz):
+        return FieldProximity.ON_FIELD, Face.EAST
+    if onSurface(southOnSurface, px, py, pz):
+        return FieldProximity.ON_FIELD, Face.SOUTH
+    if onSurface(westOnSurface, px, py, pz):
+        return FieldProximity.ON_FIELD, Face.WEST
+    if onSurface(ceilingOnSurface, px, py, pz):
+        return FieldProximity.ON_FIELD, Face.CEILING
+    if onSurface(floorOnSurface, px, py, pz):
+        return FieldProximity.ON_FIELD, Face.FLOOR
+
+    # SCHEME B:
+    # pre compute 2 cuboids
+    # each call probably does 6 comparisons
+    # i.e. 12 comparisons to know if on the field
+    # working out the face once you know it's on the field
+    # probably 3 comparisons per face, 6 faces = 18 comparisons
+    # i.e. 12+18 = worst case 30 integer comparisons
+    # it's not actually that much shorter than above
+    # but there's less surfaces to pre-calculate
+    # if you don't care about the face, even shorter
+    # e.g. could do getProximity() to get the type,
+    # and only if interested, call getFace() to get the face.
+    
+    if pointInside(fieldCuboidExpanded, px, py, pz)
+    and not pointInside(fieldCuboidContracted, px, py, pz):
+        # TODO: work out which face
+        # check all 6 faces in turn
+        return FieldProximity.ON_FIELD
+
+    # SCHEME C:
+    # pre-compute an identical large in memory model of the force field
+    # set locations to 1 if field, 2 if outside, 3 if inside
+    # index the point into the structure and the number gives you
+    # multiple answers
+    # could even encode the face type into that number.
+    # would have to have an outer cuboid that rejects the point
+    # as too far away (which would default to outside with no face?)
+    # or pre-compress the coordinates of the point to within our model.
+
+    # SCHEME D:
+    # like scheme C, but perform pre-compression of the point
+    # and pre-compute the model as a unity model (i.e. the smallest it can be)
+    # point pre-compression could be done by translating the point and the
+    # model to a near-zero based origin (removing offset).
+    # the scale could be compressed by....some simple numeric modulus scheme?
+    # is it a sort of y=mx+c style problem - take off c to translate to zero,
+    # divide point coords by some divisor to make it fit the unity model,
+    # then just index into the unity model table (3D table) and read back the
+    # answer which gives in/touching/out/facetype in one go.
+
+    # Here's how this would work:
+    # minimum model is 9x9x9, with tuples of (proximity, face) in each point.
+    # work out what divisors in x,y,z are required to scale down the
+    # forcefield cuboid to a minimum model size (3 float divisions).
+    # remember these divisors as coefficients.
+    # work out what subtractors in x,y,z are required to translate the
+    # forcefield cuboid onto the minimum model (centered around 0,0,0)
+    # remember these 3 integer coefficients.
+    # To get the proximity and face of an x,y,z point
+    #   float divide px,py,pz by the scale coefficients
+    #   convert all to int
+    #   subtract the offset coefficients
+    #   lookup x,y,z in the minimal model
+    #   the resultant tuple is the proximitytype+face.
+    # the memory space requirements are minimal.
+    # the computation requirements are small (3 float conversions,
+    # 3 float divisions, 3 integer conversions, 3 integer subtractions,
+    # a 3-way index into a data structure).
+
+    
+    #   FieldProximity.TOUCHING_INSIDE
+    #   FieldProximity.TOUCHING_OUTSIDE
+    #   FieldProximity.INSIDE
+    #   FieldProximity.OUTSIDE
+    #   FieldProximity.UNKNOWN
+
+    return FieldProximity.UNKNOWN, Face.NONE #TODO
 
 
-    # NOTE: It looks like we might have to separate door proximity
-    # from general field proximity, otherwise AT_DOORWAY and INSIDE/OUTSIDE
-    # cannot be represented by a single return value.
-    
-    #Proximity INITIAL DESIGN
-    # (regardless of if doorway is open or not)
-    #   Proximity.IN_DOORWAY
-    #     pointOnSurface(doorway)
-    
-    #   Proximity.INSIDE_AT_DOORWAY
-    #     need to know doorway surface direction
-    #     create a surface that is just inside doorway
-    #     pointOnSurface(doorwayInside)
-    
-    #   Proximity.OUTSIDE_AT_DOORWAY
-    #     need to know doorway surface direction
-    #     create a surface that is just outside doorway
-    #     pointOnSurface(doorwayOutside)
-    
-    #   Proximity.IN_FIELD
-    #     need to blot out an open doorway from calculations
-    #     if doorway closed, then ignore doorway calcs
-    #     could check pointOnSurface() of all 6 faces
-    #     if we always calculate what face we are on this might be fine
-    #     if we only want to know if in field, quicker way is cube-inner
-    
-    #   Proximity.TOUCHING_INSIDE
-    #     if doorway closed, ignore doorway in calcs
-    #     if doorway open, exclude doorway from calcs
-    #     could get 6 inner surfaces and check pointOnSurface
-    #     or could define inner cube and check if on outer surface of that cube
-    #     with -1/+1 on coordinates
-    
-    #   Proximity.TOUCHING_OUTSIDE
-    #     if doorway closed, ingnore doorway in calcs
-    #     if doorway open, exclude doorway from calcs
-    #     could get 6 outer surfaces and check pointOnSurface
-    #     or could define outer cube and check if on outside
-    #     with -1/+1 on coordinates
-    
-    #   Proximity.INSIDE
-    #     how does doorway affect this?
-    #     if doorway closed, no effect?
-    #     but would be nice to know you are standing at the doorway
-    #     but then you might not be seen as being inside?
-    #     NOTE:### can we handle doorway with this proximity
-    #     or does it need to be an independent check after "general proximity"
-    #
-    #   Proximity.OUTSIDE
-    #     same issues as for INSIDE regarding doorway
-    #
-    #   Proximity.UNKNOWN
-    #     would it ever return this? Might be useful for a "prevprox"
-    #     but presumably a sample of all the coordinates would always give
-    #     us one of the other values?
-
-
-    return Proximity.UNKNOWN, Face.NONE #TODO
+def getDoorwayProximity(px, py, pz):
+    """Work out where we are in relation to the doorway"""
+    # DoorProximity.ON_THRESHOLD
+    # DoorProximity.AT_OUTSIDE
+    # DoorProximity.AT_INSIDE
+    # DoorProximity.NONE
+    return DoorwayProximity.NONE # TODO
 
 
 def isInside(px, py, pz):
     """Is the player safely inside the force field?"""
     global lastprox
+
+    #TODO rework in line with new split between field/doorway proximity
     
-    ptype, pface = getProximity(px, py, pz)
-    if ptype == Proximity.INSIDE \
-    or ptype == Proximity.INSIDE_AT_DOORWAY \
-    or ptype == Proximity.TOUCHING_INSIDE:
-        return True # INSIDE
-    
-    # IN_FIELD and IN_DOORWAY create a result that depends on lastprox
-    if ptype == Proximity.IN_FIELD:
-        if lastprox == Proximity.INSIDE or lastprox == Proximity.TOUCHING_INSIDE:
-            return True # INSIDE
-        
-        if lastprox == Proximity.OUTSIDE or lastprox == Proximity.TOUCHING_OUTSIDE:
-            return False # NOT INSIDE
+    fptype, fpface = getFieldProximity(px, py, pz)
+    dptype         = getDoorwayProximity(px, py, pz)
 
-        #TODO sideways movements from doorway to field?
-        #TODO where is lastprox updated?
-        return False # NOT INSIDE
-
-    if ptype == Proximity.IN_DOORWAY:
-        if lastprox == Proximity.INSIDE or lastprox == Proximity.INSIDE_AT_DOORWAY:
-            return True # NOT INSIDE
-        
-        if lastprox == Proximity.OUTSIDE or lastprox == Proximity.OUTSIDE_AT_DOORWAY:
-            return False # NOT INSIDE
-
-        #TODO sideways movements from field to doorway?
-        #TODO where is lastprox updated?
-        return False # NOT INSIDE
+    #UNKNOWN            = 0
+    #INSIDE             = 1
+    #TOUCHING_INSIDE    = 2
+    #OUTSIDE            = 3
+    #TOUCHING_OUTSIDE   = 4
+    #IN_FIELD           = 5
 
 
 def isOutside(px, py, pz):
     """Is the player safely outside the force field?"""
-    ptype, pface = getProximity(px, py, pz)
-    #TODO: see notes on getProximity()
-    #OUTSIDE, OUTSIDE_AT_DOORWAY, TOUCHING_OUTSIDE
-    #IN and DOORWAY create a result that depends on previous state
-    # Similar logic to isInside
+    ptype, pface = getFieldProximity(px, py, pz)
+    #TODO: FieldProximity.
+    
+    #UNKNOWN            = 0
+    #INSIDE             = 1
+    #TOUCHING_INSIDE    = 2
+    #OUTSIDE            = 3
+    #TOUCHING_OUTSIDE   = 4
+    #IN_FIELD           = 5
     pass # TODO
 
 
@@ -308,6 +340,12 @@ def isTouchingField(px, py, pz):
     or ptype == Proximity.IN_FIELD:
         return True
     return False
+    #UNKNOWN            = 0
+    #INSIDE             = 1
+    #TOUCHING_INSIDE    = 2
+    #OUTSIDE            = 3
+    #TOUCHING_OUTSIDE   = 4
+    #IN_FIELD           = 5
 
 
 def isInField(px, py, pz):
@@ -316,16 +354,26 @@ def isInField(px, py, pz):
     if ptype == Proximity.IN_FIELD:
         return True
     return False
+    #UNKNOWN            = 0
+    #INSIDE             = 1
+    #TOUCHING_INSIDE    = 2
+    #OUTSIDE            = 3
+    #TOUCHING_OUTSIDE   = 4
+    #IN_FIELD           = 5
     
 
 def isAtDoorway(px, py, pz):
     """Work out if player is at the door region"""
-    ptype, pface = getProximity(px, py, pz)
-    if ptype == Proximity.OUTSIDE_AT_DOORWAY \
-    or ptype == Proximity.INSIDE_AT_DOORWAY \
-    or ptype == Proximity.IN_DOORWAY:
+    dptype = getDoorwayProximity(px, py, pz)
+    if dptype == DoorwayProximity.OUTSIDE_AT_DOORWAY \
+    or dptype == DoorwayProximity.INSIDE_AT_DOORWAY \
+    or dptype == DoorwayProximity.IN_DOORWAY:
         return True
     return False
+    #NONE               = 0
+    #ON_THRESHOLD       = 1
+    #AT_OUTSIDE         = 2
+    #AT_INSIDE          = 3
 
 
 # FORCEFIELD -------------------------------------------------------------------
