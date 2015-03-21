@@ -51,247 +51,36 @@ import mcpi.minecraft as minecraft
 import mcpi.block as block
 
 
-# SURFACE UTILITIES ------------------------------------------------------------
-# Utilities that help with coordinate maths associated with surfaces.
-# This is not minecraft specific, and will eventually be refactored into a
-# separate utility module. It will also be written with a set of objects
-# in a future release, so that we don't have to pass loads of coordinate
-# parameters around all the time.
-
-# We would normally assume that a cube is defined from the smallest
-# coordinates to the biggest coordinates. But there is nothing that
-# requires that to be the case in the Minecraft API (you can draw a cube
-# from any two opposite corners). So all of these functions have to assume
-# that any scheme could be used, and we normalise coordinates before
-# calculation takes place to the smallest first, the biggest second.
-# This then simplifies the maths that follows.
-
-# TODO, we are trying to avoid use of Classes in this first version
-# so we can mostly use techniques known by children (from AdventuresInMinecraft)
-
-# however, passing 6 coordinates around all the time is really cumbersome.
-# readers know about lists, so we could define any surface as a list of
-# 6 coordinate values. This would make it easier to pass around a single
-# surface, and do comparisons and transformations.
-# strictly speaking it should be a tuple (immutable), we might just
-# get away with using that if we explain it.
-# It's not critical that all techniques in this module are understandable
-# by the readership, but it would be nice if we could show a path of thinking
-# from something they understand, to something that is optimised, via a
-# trail of refactoring.
-
-def getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2):
-    return min(sx1, sy1), min(sy1, sy2), min(sz1, sz2)
-
-
-def getLargestCoords(sx1, sy1, sz1, sx2, sy2, sz2):
-    return max(sx1, sy1), max(sy1, sy2), max(sz1, sz2)
-
-
-def isPointOnSurface(px, py, pz, sx1, sy1, sz1, sx2, sy2, sz2):
-    """Work out if a point is on a given 3D surface"""
-    # Usually we will use this with a 2D surface,
-    # but it is easier to model it as a 3D surface,
-    # it means one function can handle a surface in any dimension.
-
-    minx, miny, minz = getSmallestCoords()
-    maxx, mayz, maxy = getLargsetCoords()
-    
-    if  px >= minx and px <= maxx \
-    and py >= miny and py <= maxy \
-    and pz >= minz and pz <= maxz:
-        return True # IS on surface
-    return False # NOT on surface
-
-
-def getNorthSurface(sx1, sy1, sz1, sx2, sy2, sz2):
-    """Get a surface that represents just the north face of a 3D cube"""
-    # +z is south, -z is north (i.e. want the smallest z surface)
-    # Note that s?1 does not have to be smaller than s?2
-    minx, miny, minz = getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2)
-    maxx, maxy, maxz = getLargestCoords( sx1, sy1, sz1, sx2, sy2, sz2)
-    return minx, miny, minz, maxx, maxy, minz
-
-
-def getEastSurface(sx1, sy1, sz1, sx2, sy2, sz2):
-    """Get a surface that represents just the east face of a 3D cube"""
-    # +x is east, -x is west
-    minx, miny, minz = getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2)
-    maxx, maxy, maxz = getLargestCoords( sx1, sy1, sz1, sx2, sy2, sz2)
-    return maxx, miny, minz, maxx, maxy, maxz
-
-
-def getSouthSurface(sx1, sy1, sz1, sx2, sy2, sz2):
-    """Get a surface that represents just the south face of a 3D cube"""
-    # +z is south, -z is north
-    minx, miny, minz = getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2)
-    maxx, maxy, maxz = getLargestCoords( sx1, sy1, sz1, sx2, sy2, sz2)
-    return minx, miny, maxz, maxx, maxy, maxz
-
-
-def getWestSurface(sx1, sy1, sz1, sx2, sy2, sz2):
-    """Get a surface that represents just the west face of a 3D cube"""
-    # +x is east, -x is west
-    minx, miny, minz = getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2)
-    maxx, maxy, maxz = getLargestCoords( sx1, sy1, sz1, sx2, sy2, sz2)
-    return minx, miny, minz, minx, maxy, maxz
-
-
-def getFloorSurface(sx1, sy1, sz1, sx2, sy2, sz2):
-    """Get a surface that represents just the floor face of a 3D cube"""
-    # -y is down, +y is up
-    minx, miny, minz = getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2)
-    maxx, maxy, maxz = getLargestCoords( sx1, sy1, sz1, sx2, sy2, sz2)
-    return minx, miny, minz, maxx, miny, maxz
-
-
-def getCeilingSurface(sx1, sy1, sz1, sx2, sy2, sz2):
-    """Get a surface that represents just the ceiling face of a 3D cube"""
-    # -y is down, +y is up
-    minx, miny, minz = getSmallestCoords(sx1, sy1, sz1, sx2, sy2, sz2)
-    maxx, maxy, maxz = getLargestCoords( sx1, sy1, sz1, sx2, sy2, sz2)
-    return minx, maxy, minz, maxx, maxy, maxz
-
-# Might need these in order to assess TOUCHING_INSIDE and TOUCHING_OUTSIDE??
-# moveSurfaceNorth
-# moveSurfaceEast
-# moveSurfaceWest
-# moveSurfaceSouth
-# moveSurfaceUp
-# moveSurfaceDown
-
-# or might not - once we factor out the doorway logic into a separate proximity
-# checker, the maths might be much simpler and be done with simple cuboid
-# expansions or contractions (or two overlapping cuboid checks), rather
-# than doing all the 6-face checking logic.
-
-
 # PROXIMITY TO A REGION --------------------------------------------------------
 # This maths is independent of minecraft, its all to do with coordinates.
 
-# Proximity types
-class FieldProximity:
-    UNKNOWN            = 0
-    INSIDE             = 1
-    TOUCHING_INSIDE    = 2
-    OUTSIDE            = 3
-    TOUCHING_OUTSIDE   = 4
-    IN_FIELD           = 5
-
-class DoorwayProximity:
-    NONE               = 0
-    ON_THRESHOLD       = 1
-    AT_OUTSIDE         = 2
-    AT_INSIDE          = 3
- 
-# Face types
-class Face:
-    NONE    = 0
-    NORTH   = 1
-    SOUTH   = 2
-    EAST    = 3
-    WEST    = 4
-    FLOOR   = 5
-    CEILING = 6
-    # face priorities at corner points?
-
-
-#NOTE this method looks like it could be computationally expensive to run
-#that might be bad if we regularly move the force field, for example
-#we are looking at alternative implementations first before coding it.
+# 9x9x9 minimum model of a room
+import minroom
 
 def getFieldProximity(px, py, pz):
     """Work out what type of proximity to the field we have"""
-    
-    # is the point ON the force field?
-    # FieldProximity.ON_FIELD
-    
-    # SCHEME A:
-    # pre compute 6 surfaces
-    # This probably does 6 comparisons per call,
-    # max of 6 calls to work out if on field.
-    # i.e. 36 integer comparisons.
-    if onSurface(northOnSurface, px, py, pz):
-        return FieldProximity.ON_FIELD, Face.NORTH
-    if onSurface(eastOnSurface, px, py, pz):
-        return FieldProximity.ON_FIELD, Face.EAST
-    if onSurface(southOnSurface, px, py, pz):
-        return FieldProximity.ON_FIELD, Face.SOUTH
-    if onSurface(westOnSurface, px, py, pz):
-        return FieldProximity.ON_FIELD, Face.WEST
-    if onSurface(ceilingOnSurface, px, py, pz):
-        return FieldProximity.ON_FIELD, Face.CEILING
-    if onSurface(floorOnSurface, px, py, pz):
-        return FieldProximity.ON_FIELD, Face.FLOOR
 
-    # SCHEME B:
-    # pre compute 2 cuboids
-    # each call probably does 6 comparisons
-    # i.e. 12 comparisons to know if on the field
-    # working out the face once you know it's on the field
-    # probably 3 comparisons per face, 6 faces = 18 comparisons
-    # i.e. 12+18 = worst case 30 integer comparisons
-    # it's not actually that much shorter than above
-    # but there's less surfaces to pre-calculate
-    # if you don't care about the face, even shorter
-    # e.g. could do getProximity() to get the type,
-    # and only if interested, call getFace() to get the face.
-    
-    if pointInside(fieldCuboidExpanded, px, py, pz)
-    and not pointInside(fieldCuboidContracted, px, py, pz):
-        # TODO: work out which face
-        # check all 6 faces in turn
-        return FieldProximity.ON_FIELD
-
-    # SCHEME C:
-    # pre-compute an identical large in memory model of the force field
-    # set locations to 1 if field, 2 if outside, 3 if inside
-    # index the point into the structure and the number gives you
-    # multiple answers
-    # could even encode the face type into that number.
-    # would have to have an outer cuboid that rejects the point
-    # as too far away (which would default to outside with no face?)
-    # or pre-compress the coordinates of the point to within our model.
-
-    # SCHEME D:
-    # like scheme C, but perform pre-compression of the point
-    # and pre-compute the model as a unity model (i.e. the smallest it can be)
-    # point pre-compression could be done by translating the point and the
-    # model to a near-zero based origin (removing offset).
-    # the scale could be compressed by....some simple numeric modulus scheme?
-    # is it a sort of y=mx+c style problem - take off c to translate to zero,
-    # divide point coords by some divisor to make it fit the unity model,
-    # then just index into the unity model table (3D table) and read back the
-    # answer which gives in/touching/out/facetype in one go.
-
-    # Here's how this would work:
-    # minimum model is 9x9x9, with tuples of (proximity, face) in each point.
-    # work out what divisors in x,y,z are required to scale down the
-    # forcefield cuboid to a minimum model size (3 float divisions).
-    # remember these divisors as coefficients.
-    # work out what subtractors in x,y,z are required to translate the
-    # forcefield cuboid onto the minimum model (centered around 0,0,0)
-    # remember these 3 integer coefficients.
-    # To get the proximity and face of an x,y,z point
-    #   float divide px,py,pz by the scale coefficients
-    #   convert all to int
-    #   subtract the offset coefficients
-    #   lookup x,y,z in the minimal model
-    #   the resultant tuple is the proximitytype+face.
-    # the memory space requirements are minimal.
-    # the computation requirements are small (3 float conversions,
-    # 3 float divisions, 3 integer conversions, 3 integer subtractions,
-    # a 3-way index into a data structure).
-
-    
+    #TODO precompute room coef with
+    # room = minroom.getRoomTransform(x1, y1, z1, x2, y2, z2)
+    #TODO use minroom.getPointProximity(room, px, py, pz)
+    # These will come back:
+    #   FieldProximity.ON_FIELD
     #   FieldProximity.TOUCHING_INSIDE
     #   FieldProximity.TOUCHING_OUTSIDE
     #   FieldProximity.INSIDE
     #   FieldProximity.OUTSIDE
     #   FieldProximity.UNKNOWN
+    # Face.UNKNOWN, NORTH, EAST, SOUTH, WEST, FLOOR, CEILING
 
     return FieldProximity.UNKNOWN, Face.NONE #TODO
 
+
+
+#class DoorwayProximity:
+#    NONE               = 0
+#    ON_THRESHOLD       = 1
+#    AT_OUTSIDE         = 2
+#    AT_INSIDE          = 3
 
 def getDoorwayProximity(px, py, pz):
     """Work out where we are in relation to the doorway"""
