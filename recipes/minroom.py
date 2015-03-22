@@ -1,11 +1,12 @@
 # minroom.py  21/03/2015  D.J.Whale
 #
 # Model of a minimum room and it's surroundings,
-# bottom left corner translated to (0,0,0).
+# lower left front corner translated to (0,0,0).
 # Any room can be scaled down to this minimum room.
 # Any point coordinate can be scaled down to this minimum room.
 # It then allows point comparisons to be made for proximity and face.
-# Room coefficients are (sx,sy,sz,ox,oy,oz)
+# Room coefficients are (ox,oy,oz,sx,sy,sz)
+# o=offset(subtracted), s=scale(divided by)
 #
 # Assessment of proximity and face is then a 3D lookup of an x,y,z index
 # in this model.
@@ -18,8 +19,7 @@
 
 
 
-# SCHEME D:
-# like scheme C, but perform pre-compression of the point
+# Perform pre-compression of the point
 # and pre-compute the model as a unity model (i.e. the smallest it can be)
 # point pre-compression could be done by translating the point and the
 # model to a near-zero based origin (removing offset).
@@ -51,427 +51,128 @@
 
 
 
-def translateCube(x1, y1, z1, x2, y2, z2):
-    #TODO calculate scales and offsets to translate any point in/around room
-    #down to the model coordinates
-    return (ox, oy, oz, sx, sy, sz)
+#def translateCube(x1, y1, z1, x2, y2, z2):
+#    #TODO calculate scales and offsets to translate any point in/around room
+#    #down to the model coordinates
+#    return (ox, oy, oz, sx, sy, sz)
 
 
 
-def translatePoint(room, px, py, pz):
-    # translate a point using the room coefficients.
-    # handle out of range (-ves) properly
-    return ix, iy, iz # TODO indexes into model
+#def translatePoint(room, px, py, pz):
+#    # translate a point using the room coefficients.
+#    # handle out of range (-ves) properly
+#    return ix, iy, iz # TODO indexes into model
 
 
-def getPointProximity(room, px, py, pz):
-    ix, iy, iz = translatePoint(room, px, py, pz)
-    proximity, face = model[ix][9-iy][iz]
-    return proximity, face
+#def getPointProximity(room, px, py, pz):
+#    ix, iy, iz = translatePoint(room, px, py, pz)
+#    proximity, face = model[ix][9-iy][iz]
+#    return proximity, face
     
 
 # Proximity types
-class Proximity
-    UNKNOWN            = 0 # X
-    INSIDE             = 1 # i
-    TOUCHING_INSIDE    = 2 # I
-    OUTSIDE            = 3 # o
-    TOUCHING_OUTSIDE   = 4 # O
-    ON_FIELD           = 5 # Z
+class Proximity:
+    UNKNOWN            = 'X'
+    INSIDE             = 'I'
+    INSIDE_TOUCHING    = 'IZ'
+    OUTSIDE            = 'O'
+    OUTSIDE_TOUCHING   = 'OZ'
+    ON                 = 'Z'
  
 # Face types
-class Face
-    NONE    = 0 # X
-    NORTH   = 1 # N
-    SOUTH   = 2 # S
-    EAST    = 3 # E
-    WEST    = 4 # W
-    FLOOR   = 5 # F
-    CEILING = 6 # C
+class Face:
+    NONE    = 'X'
+    NORTH   = 'N'
+    SOUTH   = 'S'
+    EAST    = 'E'
+    WEST    = 'W'
+    FLOOR   = 'F'
+    CEILING = 'C'
 
-# Shorter names for Proximity and Face to make the table easier to write
-X = Proximity.UNKNOWN
-i = Proximity.INSIDE
-I = Proximity.TOUCHING_INSIDE
-o = Proximity.OUTSIDE
-O = Proximity.TOUCHING_OUTSIDE
-Z = Proximity.ON_FIELD
 
-N = Face.NORTH
-S = Face.SOUTH
-E = Face.EAST
-W = Face.WEST
-F = Face.FLOOR
-C = Face.CEILING
+def buildEmptyModel(sx, sy, sz):
+    # make a 9*9*9 list of lists of lists (independent lists)
+    xlist = []
+    for x in range(sx):
+        ylist = []
+        for y in range(sy):
+            zlist = []
+            for z in range(sz):
+                zlist.append(None)
+            ylist.append(zlist)
+        xlist.append(ylist)
+    return xlist
 
-# Note, might still be a way of generating this programaticaly
-# that is easier than working it out by hand.
+  
+def fillProximity(model):
+    # fill in 5 wrapped shells of proximity data, centered at (4,4,4)
 
-# (4) is center (i.e. inside, touching nothing, no dominant face).
-# [2] is field
+    # shell 0 (1 write)
+    model[4][4][4] = Proximity.INSIDE
 
-# sample slice: x=?, y=4, z=4
-# 0:outside/W, 1:touching_outside/W, 2:on_field/W, 3:touching_inside/W, 4:inside/X, 5:touching_inside/E,6:on_field/E,7:touching_outside/E,8:outside/E
+    # shell 1 (27 reads, 26 writes)
+    for x in [3,4,5]:
+        for y in [3,4,5]:
+            for z in [3,4,5]:
+                if model[x][y][z] == None:
+                    model[x][y][z] = Proximity.INSIDE_TOUCHING
 
-# y inverted to ease human entry of table
+    # shell 2 (125 reads, 98 writes)
+    for x in [2,3,4,5,6]:
+        for y in [2,3,4,5,6]:
+            for z in [2,3,4,5,6]:
+                if model[x][y][z] == None:
+                    model[x][y][z] = Proximity.ON
 
-# TODO: reorder as (9-z,9-y,x) easier for human visualisation
-# TODO: take out gap lines, will be easier to visualise slices
-# TODO: algebraicly specify table and auto generate.
+    # shell 3 (343 reads, 218 writes)
+    for x in [1,2,3,4,5,6,7]:
+        for y in [1,2,3,4,5,6,7]:
+            for z in [1,2,3,4,5,6,7]:
+                if model[x][y][z] == None:
+                    model[x][y][z] = Proximity.OUTSIDE_TOUCHING
 
-# e.g. a prioritised list of slices
+    # shell 4 (729 reads, 386 writes)
+    for x in [0,1,2,3,4,5,6,7,8]:
+        for y in [0,1,2,3,4,5,6,7,8]:
+            for z in [0,1,2,3,4,5,6,7,8]:
+                if model[x][y][z] == None:
+                    model[x][y][z] = Proximity.OUTSIDE
 
-# if x==0: return (o,W)
-# if x==8: return (o,E)
-# if y==0: return (o,F)
-# if y==8: return (o,C)
-# if z==0: return (o,S)
-# if z==8: return (o,N)
-# if x==7:
-#   if 
+def calcFace(x,y,z):
+    return '?'
+    #TODO calculate N,S,E,W,F,C
+    #based on an algebraic specification with respect to (x,y,z)
 
-model =
-[
-    [ # X=0 west
-        [ # Y=0 floor
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=1
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=2
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=3
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=(4)
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=5
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=6
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=7
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=8 ceiling
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ]
-    ],
-    [ # X=1
-        [ # Y=0 floor
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=1
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=2
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=3
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=(4)
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=5
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=6
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=7
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=8 ceiling
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ]
-    ],
-    [ # X=2
-        [ # Y=0 floor
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=1
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=2
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=3
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=(4)
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=5
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=6
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=7
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=8 ceiling
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ]
-    ],
-    [ # X=3
-        [ # Y=0 floor
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=1
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=2
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=3
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=(4)
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=5
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=6
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=7
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=8 ceiling
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ]
-    ],
-    [ # X=(4)
-        [ # Y=0 floor
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=1
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=2
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=3
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=(4)
-        # Z=  0     1    [2]    3    (4)    5    [6]    7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X) #### center
-        ],
-        [ # Y=5
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=6
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=7
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=8 ceiling
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ]
-    ],
-    [ # X=5
-        [ # Y=0 floor
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=1
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=2
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=3
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=(4)
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=5
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=6
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=7
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=8 ceiling
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ]
-    ],
-    [ # X=6
-        [ # Y=0 floor
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=1
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=2
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=3
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=(4)
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=5
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=6
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=7
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=8 ceiling
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ]
-    ],
-    [ # X=7
-        [ # Y=0 floor
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=1
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=2
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=3
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=(4)
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=5
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=6
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=7
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=8 ceiling
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ]
-    ],
-    [ # X=8
-        [ # Y=0 floor
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=1
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=2
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=3
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=(4)
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=5
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=6
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=7
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ],
-        [ # Y=8 ceiling
-        # Z=  0     1     2     3    (4)    5     6     7     8    
-            (X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X),(X,X)
-        ]
-    ]
-]
+
+def fillFaces(model):                   
+    for x in range(0,9):
+        for y in range(0,9):
+            for z in range(0,9):
+                prox = model[x][y][z]
+                face = calcFace(x,y,z)
+                data = (prox, face)
+                model[x][y][z] = data
+
+
+# TEST HARNESS
+
+model = buildEmptyModel(9,9,9)
+fillProximity(model)
+fillFaces(model)
+print(str(model))
+
+
+#TODO: Visualise in minecraft blocks
+# one shell at a time
+# different colour for different proximity
+
+#TODO: when face done, do the same
+# different colour wool for each of 6 face types
+
+#TODO: When tested, capture the model initialiser and
+#just put it in a .py file, so it can be restored quickly
+#when the module restarts.
+
+
+
+
