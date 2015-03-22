@@ -154,25 +154,68 @@ def fillFaces(model):
                 model[x][y][z] = data
 
 
-# TEST HARNESS
 
-model = buildEmptyModel(9,9,9)
-fillProximity(model)
-fillFaces(model)
-print(str(model))
+# TEST HARNESS -----------------------------------------------------------------
 
-
-#TODO: Visualise in minecraft blocks
+# Visualise in minecraft blocks
 # one shell at a time
 # different colour for different proximity
 
-#TODO: when face done, do the same
-# different colour wool for each of 6 face types
+def visualise():
+    import mcpi.minecraft as minecraft
+    import mcpi.block as block
+    mc = minecraft.Minecraft.create()
+    pos = mc.player.getTilePos()
+    pos.x += 1
 
-#TODO: When tested, capture the model initialiser and
-#just put it in a .py file, so it can be restored quickly
-#when the module restarts.
+
+    prox_list  = [
+        Proximity.INSIDE,
+        Proximity.INSIDE_TOUCHING,
+        Proximity.ON,
+        Proximity.OUTSIDE_TOUCHING,
+        Proximity.OUTSIDE
+    ]
+
+    block_list = [
+        block.STONE.id,
+        block.GLASS.id,
+        block.MELON.id,
+        block.GLASS.id,
+        block.STONE.id
+    ]
 
 
+    for i in range(len(prox_list)):
+        wantedProximity = prox_list[i]
+        b = block_list[i]
+        
+        for x in range(9):
+            for y in range(9):
+                for z in range(9):
+                    prox,face = model[x][y][z]
+                    if prox == wantedProximity:
+                        #print(str((x,y,z)))
+                        mc.setBlock(pos.x+x, pos.y+y, pos.z+z, b)
 
+        mc.postToChat("Look at shell:" + str(i))
+
+                    
+
+    #TODO: when face done, do the same
+    # different colour wool for each of 6 face types
+
+    #TODO: When tested, capture the model[][][] initialiser and
+    #just put it in a .py file, so it can be restored quickly
+    #when the module restarts.
+
+
+if __name__ == "__main__":
+    model = buildEmptyModel(9,9,9)
+    fillProximity(model)
+    fillFaces(model)
+    print(str(model))
+    visualise()
+
+# END
 
