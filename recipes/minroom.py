@@ -105,6 +105,11 @@ def translatePoint(translation, px, py, pz):
     mpy = int(mpy)
     mpz = int(mpz)
 
+    # Clamp out of range indexes to the minroom
+    mpx = min(max(0, mpx), 8)
+    mpy = min(max(0, mpy), 8)
+    mpz = min(max(0, mpz), 8)
+
     return (mpx, mpy, mpz)
        
 
@@ -112,7 +117,11 @@ def getPointProximity(translation, px, py, pz):
     """Work out the proximity type of this point to the given room"""
     
     ix, iy, iz = translatePoint(translation, px, py, pz)
+    mc.postToChat("x:" + str(ix) + " y:" + str(iy) + " z:" + str(iz))
+    
     proximity, face = model[ix][iy][iz]
+    #print((proximity, face))
+    
     return proximity, face
     
 
@@ -262,11 +271,9 @@ def buildroom(x1, y1, z1, x2, y2, z2, b):
 
     
 def testroom():
-    import mcpi.minecraft as minecraft
-    import mcpi.block as block
-    import time
-    
-    R = (0,0,0,10,10,10)
+    pos = mc.player.getTilePos()
+    RR = (0,0,0,10,10,10)
+    R = (pos.x+RR[0], pos.y+RR[1], pos.z+RR[2], pos.x+RR[3], pos.y+RR[4], pos.z+RR[5])
     
     buildroom(R[0], R[1], R[2], R[3], R[4], R[5], block.GLASS.id)
 
@@ -278,7 +285,7 @@ def testroom():
         while True:
             time.sleep(1)
             pos = mc.player.getTilePos()
-            prox,face = getProximity(translate, pos.x, pos.y, pos.z)
+            prox,face = getPointProximity(translate, pos.x, pos.y, pos.z)
             mc.postToChat("prox:" + str(prox))
     finally:
         # destroy the room on exit
@@ -294,6 +301,12 @@ fillFaces(model)
 if __name__ == "__main__":
     #print(str(model))
     #visualise()
+    
+    import mcpi.minecraft as minecraft
+    import mcpi.block as block
+    import time
+    mc = minecraft.Minecraft.create()
+    
     testroom()
 
 # END
